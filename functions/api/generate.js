@@ -238,11 +238,36 @@ function normalizeStrict(obj) {
 
 function extractJsonObject(text) {
   const clean = String(text || "").replace(/```json|```/gi, "").trim();
+
+  let depth = 0;
+  let start = -1;
+  let end = -1;
+
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i];
+    if (c === '{') {
+      if (start === -1) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        end = i;
+        break;
+      }
+    }
+  }
+
+  if (start !== -1 && end !== -1 && end > start) {
+    return clean.slice(start, end + 1);
+  }
+
+  // fallback لو مفيش توازن كامل
   const first = clean.indexOf("{");
   const last = clean.lastIndexOf("}");
-  if (first === -1 || last === -1 || last <= first) return null;
-  return clean.slice(first, last + 1);
+  if (first !== -1 && last > first) return clean.slice(first, last + 1);
+  return null;
 }
+
 
 /* ---------------- Persona ---------------- */
 
