@@ -64,6 +64,7 @@ General rules:
 
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+console.log("Sending prompt to Gemini:", prompt);
 
     const res = await fetch(url, {
       method: "POST",
@@ -78,9 +79,14 @@ General rules:
     });
 
     const raw = await res.json();
-
-    let text = raw?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    text = text.replace(/```json|```/gi, "").trim();
+let text = "";
+if (raw?.candidates?.length) {
+  const c = raw.candidates[0];
+  if (c.content?.parts?.length && c.content.parts[0].text) {
+    text = c.content.parts[0].text;
+  }
+}
+console.log("DEBUG RAW RESPONSE:", JSON.stringify(raw, null, 2));
 
     let parsed;
     try {
