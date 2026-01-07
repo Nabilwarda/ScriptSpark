@@ -1,3 +1,19 @@
+export async function onRequest({ request, env }) {
+  // Handle CORS preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json", ...corsHeaders() }
+    });
+  }
+
+  return onRequestPost({ request, env });
+}
+
 export async function onRequestPost({ request, env }) {
   try {
     const { platform, tone, length, language, topic } = await request.json();
@@ -70,7 +86,6 @@ General rules:
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    // Debug (Cloudflare logs)
     console.log("[Gemini] Request meta:", {
       platform: platformLabel,
       tone,
@@ -88,11 +103,17 @@ General rules:
         generationConfig: {
           temperature: 0.7,
           maxOutputTokens: 900
-        }
+        },
+        // Helps reduce "silence" / empty output in some cases
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+        ]
       })
     });
 
-    // IMPORTANT: read as text first so we can debug non-JSON errors
     const resText = await res.text();
     let raw = null;
     try {
@@ -102,6 +123,7 @@ General rules:
     }
 
     console.log("[Gemini] HTTP:", res.status);
+
     if (!res.ok) {
       console.log("[Gemini] Non-OK body:", resText);
       return jsonErr(res.status, "Gemini API error", {
@@ -110,34 +132,40 @@ General rules:
       });
     }
 
-    console.log("[Gemini] RAW RESPONSE (parsed?):", raw ? "JSON" : "TEXT");
     if (!raw) {
-      console.log("[Gemini] RAW TEXT:", resText);
+      console.log("[Gemini] Non-JSON success body:", resText);
       return jsonErr(500, "Gemini returned non-JSON response", { body: resText });
     }
 
-    // Extract ALL text parts, not just [0]
-    let text = "";
-    const c0 = raw?.candidates?.[0];
-
-    const finishReason = c0?.finishReason;
-    const safetyRatings = c0?.safetyRatings;
-    if (finishReason) console.log("[Gemini] finishReason:", finishReason);
-    if (safetyRatings) console.log("[Gemini] safetyRatings:", safetyRatings);
-
-    const parts = c0?.content?.parts;
-    if (Array.isArray(parts)) {
-      text = parts.map(p => (p && typeof p.text === "string" ? p.text : "")).join("\n").trim();
+    // If Gemini returned no candidates, return a clear error
+    if (!raw.candidates || !raw.candidates.length) {
+      return jsonErr(500, "Gemini returned no candidates", {
+        rawPreview: safePreview(raw, 2000)
+      });
     }
 
-    // Sometimes models return nothing in parts but include other fields
+    const c0 = raw.candidates[0];
+
+    // These are super useful in Cloudflare logs
+    if (c0.finishReason) console.log("[Gemini] finishReason:", c0.finishReason);
+    if (c0.safetyRatings) console.log("[Gemini] safetyRatings:", c0.safetyRatings);
+
+    // Extract ALL parts text
+    let text = "";
+    const parts = c0?.content?.parts;
+    if (Array.isArray(parts)) {
+      text = parts
+        .map(p => (p && typeof p.text === "string" ? p.text : ""))
+        .join("\n")
+        .trim();
+    }
+
     console.log("[Gemini] Extracted text length:", text.length);
 
     if (!text) {
-      // return debug info so you can see why it was empty
       return jsonErr(500, "Gemini returned empty text", {
-        finishReason: finishReason || null,
-        safetyRatings: safetyRatings || null,
+        finishReason: c0.finishReason || null,
+        safetyRatings: c0.safetyRatings || null,
         rawPreview: safePreview(raw, 2000)
       });
     }
@@ -145,12 +173,12 @@ General rules:
     // Clean code fences if any
     text = text.replace(/```json|```/gi, "").trim();
 
-    // Parse JSON from model output
+    // Parse JSON
     let parsed;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      console.log("[Gemini] JSON parse failed. Raw text preview:", text.slice(0, 600));
+      console.log("[Gemini] JSON parse failed. Raw preview:", text.slice(0, 600));
       return jsonErr(500, "AI did not return valid JSON", {
         parseError: e.message,
         rawTextPreview: text.slice(0, 1500)
@@ -170,7 +198,7 @@ General rules:
 
 function ok(json) {
   return new Response(JSON.stringify(json), {
-    headers: { "Content-Type": "application/json" }
+    headers: { "Content-Type": "application/json", ...corsHeaders() }
   });
 }
 
@@ -182,9 +210,17 @@ function jsonErr(status, error, extra = null) {
     }),
     {
       status,
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json", ...corsHeaders() }
     }
   );
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  };
 }
 
 function safePreview(obj, maxLen = 1500) {
@@ -240,9 +276,7 @@ function detectPersona(topic = "") {
     t.includes("تقييم") ||
     t.includes("game") ||
     t.includes("لعبة")
-  ) {
-    return "reviewer";
-  }
+  ) return "reviewer";
 
   if (
     t.includes("شرح") ||
@@ -250,17 +284,13 @@ function detectPersona(topic = "") {
     t.includes("how") ||
     t.includes("tips") ||
     t.includes("نصائح")
-  ) {
-    return "educator";
-  }
+  ) return "educator";
 
   if (
     t.includes("قصة") ||
     t.includes("حصل") ||
     t.includes("story")
-  ) {
-    return "storyteller";
-  }
+  ) return "storyteller";
 
   return "general_creator";
 }
