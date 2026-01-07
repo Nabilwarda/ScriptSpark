@@ -21,7 +21,7 @@ export async function onRequest({ request, env }) {
     const tone = body.tone || "Friendly";
     const length = Number(body.length || 30);
     const language = body.language || "Arabic";
-    const topic = (body.topic || "").trim();
+    const topic = String(body.topic || "").trim();
 
     if (!topic) return jsonErr(400, "Missing topic");
 
@@ -32,13 +32,7 @@ export async function onRequest({ request, env }) {
 
     const persona = detectPersona(topic);
 
-    const schema = `{
-  "hooks": ["", "", "", "", ""],
-  "script": { "intro": "", "body": "", "cta": "" },
-  "caption": "",
-  "hashtags": ["#tag"]
-}`;
-
+    // Prompt: spoken + JSON only (بس كمان إحنا هنجبره JSON من generationConfig)
     const prompt = `
 Return ONLY valid JSON. No markdown. No explanations. No text outside JSON.
 
@@ -50,9 +44,6 @@ Tone: ${tone}
 Target length: ${length} seconds
 Topic: ${topic}
 Persona: ${persona}
-
-Return EXACTLY this JSON schema:
-${schema}
 
 Rules:
 - This must sound like REAL speech (natural, conversational).
@@ -67,59 +58,44 @@ Rules:
 - Never mention AI, prompts, policies, or instructions.
 `.trim();
 
-    // ✅ موديل واحد فقط (Flash)
-    const MODEL = "gemini-2.5-flash";
+    // Flash ONLY (زي ما طلبت)
+    const model = "gemini-2.5-flash";
 
     const attempt = await callGemini({
       apiKey,
-      model: MODEL,
+      model,
       prompt,
       temperature: 0.8,
-      maxOutputTokens: 900
+      maxOutputTokens: 1800, // زودناها عشان يمنع القطع
     });
 
-    // لو فشل: رجّع تفاصيل واضحة
     if (!attempt.ok) {
-      return jsonErr(500, "Gemini call failed", {
-        model: MODEL,
+      return jsonErr(500, "Gemini API error", {
+        model,
         status: attempt.status,
-        error: attempt.error || null,
-        rawPreview: attempt.rawPreview || null
+        error: attempt.error,
+        rawPreview: attempt.rawPreview,
       });
     }
 
-    // extract+parse JSON
-    const extracted = extractJsonObject(attempt.text || "");
-    if (!extracted) {
-      return jsonErr(500, "No JSON object found in model response", {
-        model: MODEL,
-        textPreview: preview(attempt.text, 1200)
-      });
+    const text = String(attempt.text || "").trim();
+    if (!text) {
+      return jsonErr(500, "Gemini returned empty text", { model });
     }
 
+    // في JSON mode المفروض ده يبقى JSON صافي
     let parsed;
     try {
-      parsed = JSON.parse(extracted);
+      parsed = JSON.parse(text);
     } catch (e) {
       return jsonErr(500, "AI did not return valid JSON", {
-        model: MODEL,
+        model,
         parseError: e.message,
-        rawTextPreview: preview(extracted, 1500)
+        textPreview: preview(text, 2000),
       });
     }
 
-    // validate shape strictly (no fallback)
-    let out;
-    try {
-      out = normalizeStrict(parsed);
-    } catch (e) {
-      return jsonErr(500, "Invalid AI response shape", {
-        model: MODEL,
-        error: e.message,
-        parsedPreview: preview(JSON.stringify(parsed), 1500)
-      });
-    }
-
+    const out = normalizeStrict(parsed);
     return jsonOk(out);
 
   } catch (err) {
@@ -130,24 +106,53 @@ Rules:
 /* ---------------- Gemini Call ---------------- */
 
 async function callGemini({ apiKey, model, prompt, temperature, maxOutputTokens }) {
-  // ملاحظة: بنستخدم v1beta هنا زي ما كنت عامل
-  // لو ظهرلك errors غريبة، جرّب تغيّرها لـ /v1
+  // NOTE: Using v1beta generateContent + JSON Mode + schema
+  // Fields response_mime_type and response_schema are supported in REST generationConfig. :contentReference[oaicite:1]{index=1}
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  // JSON schema (REST requires upper-case-ish enum values like "OBJECT"/"ARRAY"/"STRING" in examples)
+  const responseSchema = {
+    type: "OBJECT",
+    properties: {
+      hooks: {
+        type: "ARRAY",
+        items: { type: "STRING" },
+      },
+      script: {
+        type: "OBJECT",
+        properties: {
+          intro: { type: "STRING" },
+          body: { type: "STRING" },
+          cta: { type: "STRING" },
+        },
+        required: ["intro", "body", "cta"],
+      },
+      caption: { type: "STRING" },
+      hashtags: {
+        type: "ARRAY",
+        items: { type: "STRING" },
+      },
+    },
+    required: ["hooks", "script", "caption", "hashtags"],
+  };
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
+        "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature,
-          maxOutputTokens
-        }
-      })
+          maxOutputTokens,
+          // ✅ إجبار JSON output
+          response_mime_type: "application/json",
+          response_schema: responseSchema,
+        },
+      }),
     });
 
     const resText = await res.text();
@@ -160,7 +165,7 @@ async function callGemini({ apiKey, model, prompt, temperature, maxOutputTokens 
         ok: false,
         status: res.status,
         error: raw?.error?.message || "Gemini API error",
-        rawPreview: preview(resText)
+        rawPreview: preview(resText),
       };
     }
 
@@ -169,34 +174,26 @@ async function callGemini({ apiKey, model, prompt, temperature, maxOutputTokens 
         ok: false,
         status: res.status,
         error: "No candidates returned",
-        rawPreview: preview(resText)
+        rawPreview: preview(resText),
       };
     }
 
     const c0 = raw.candidates[0];
     const parts = c0?.content?.parts;
 
+    // With JSON mode, text should be JSON
     const text = Array.isArray(parts)
       ? parts.map(p => (typeof p?.text === "string" ? p.text : "")).join("\n").trim()
       : "";
 
-    if (!text) {
-      return {
-        ok: false,
-        status: res.status,
-        error: "Empty text returned from candidates[0].content.parts",
-        rawPreview: preview(resText)
-      };
-    }
-
     return { ok: true, status: res.status, text };
 
   } catch (e) {
-    return { ok: false, status: 0, error: e.message || "Network error" };
+    return { ok: false, status: 0, error: e?.message || "Network error" };
   }
 }
 
-/* ---------------- Validation & JSON extraction ---------------- */
+/* ---------------- Validation ---------------- */
 
 function normalizeStrict(obj) {
   if (!obj || typeof obj !== "object") throw new Error("Not an object");
@@ -225,49 +222,19 @@ function normalizeStrict(obj) {
     .filter(Boolean)
     .map(h => (h.startsWith("#") ? h : `#${h}`));
 
-  const hooks = obj.hooks.map(x => String(x || "").trim()).filter(Boolean);
-  if (hooks.length !== 5) throw new Error("hooks items must be non-empty (5)");
+  const hooks = obj.hooks
+    .map(x => String(x || "").trim())
+    .filter(Boolean);
+
+  if (hooks.length !== 5) throw new Error("hooks must be 5 non-empty strings");
 
   return {
     hooks,
     script: { intro, body, cta },
     caption,
-    hashtags
+    hashtags,
   };
 }
-
-function extractJsonObject(text) {
-  const clean = String(text || "").replace(/```json|```/gi, "").trim();
-
-  let depth = 0;
-  let start = -1;
-  let end = -1;
-
-  for (let i = 0; i < clean.length; i++) {
-    const c = clean[i];
-    if (c === '{') {
-      if (start === -1) start = i;
-      depth++;
-    } else if (c === '}') {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        end = i;
-        break;
-      }
-    }
-  }
-
-  if (start !== -1 && end !== -1 && end > start) {
-    return clean.slice(start, end + 1);
-  }
-
-  // fallback لو مفيش توازن كامل
-  const first = clean.indexOf("{");
-  const last = clean.lastIndexOf("}");
-  if (first !== -1 && last > first) return clean.slice(first, last + 1);
-  return null;
-}
-
 
 /* ---------------- Persona ---------------- */
 
@@ -292,21 +259,21 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type",
   };
 }
 
 function jsonOk(data) {
   return new Response(JSON.stringify(data), {
     status: 200,
-    headers: { "Content-Type": "application/json", ...corsHeaders() }
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
   });
 }
 
 function jsonErr(status, error, extra = null) {
   return new Response(JSON.stringify({ error, ...(extra ? { extra } : {}) }), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders() }
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
   });
 }
 
