@@ -2,38 +2,67 @@ export async function onRequestPost({ request, env }) {
   try {
     const { platform, tone, length, language, topic } = await request.json();
 
-    const langLabel = language === "Arabic" ? "Arabic (Egyptian friendly)" : "English";
     const platformLabel = platform || "TikTok";
+    const langLabel = language === "Arabic"
+      ? "Arabic (Egyptian colloquial, spoken)"
+      : "English (spoken)";
+
+    const persona = detectPersona(topic);
 
     const schema = `{
   "hooks": ["", "", "", "", ""],
   "script": { "intro": "", "body": "", "cta": "" },
   "caption": "",
-  "hashtags": ["#tag1"]
+  "hashtags": ["#tag"]
 }`;
 
     const prompt = `
-You are a strict JSON API.
-Return ONLY valid JSON. No markdown. No explanations. No extra text.
+You are a professional content creator writing a SPOKEN VIDEO SCRIPT.
+
+IMPORTANT:
+- Return ONLY valid JSON
+- No markdown
+- No explanations
+- No text outside JSON
 
 Language: ${langLabel}
 Platform: ${platformLabel}
 Tone: ${tone}
-Length: ${length} seconds
+Target length: ${length} seconds
 Topic: ${topic}
+Persona: ${persona}
 
 Return EXACTLY this JSON schema:
 ${schema}
 
-Rules:
-- hooks must be exactly 5 (short, punchy)
-- script.intro/body/cta must be non-empty
-- caption must be 1 line
-- hashtags must be 8 to 12 items, each starts with #
-- Do not mention that you are an AI.
+Persona rules:
+- If persona is "reviewer":
+  Speak in first person.
+  Share a personal experience, reaction, and opinion.
+  Focus on feelings, impressions, and whether it’s worth it.
+- If persona is "educator":
+  Explain the idea in a simple conversational way.
+  No steps, no lists, no teaching tone.
+- If persona is "storyteller":
+  Tell a short relatable story or situation.
+- If persona is "general_creator":
+  Share an insight or opinion naturally.
+
+General rules:
+- This must sound like REAL speech said to a camera.
+- Do NOT use steps, lists, bullets, or numbered instructions.
+- Do NOT say "Step 1", "First", "أول حاجة", etc.
+- Use short sentences and pauses with "…".
+- hooks must be exactly 5, punchy and spoken.
+- script.intro/body/cta must be natural spoken language.
+- caption must be ONE short sentence.
+- hashtags must be 8–12, each starting with #.
+- Use ONLY the selected language. No mixing.
+- Never mention AI or prompts.
 `;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
 
     const res = await fetch(url, {
       method: "POST",
@@ -41,7 +70,7 @@ Rules:
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.7,
+          temperature: 0.75,
           maxOutputTokens: 900
         }
       })
@@ -51,23 +80,23 @@ Rules:
     let text = raw?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     text = text.replace(/```json|```/gi, "").trim();
 
-    // Try strict JSON
     let parsed = null;
     try { parsed = JSON.parse(text); } catch {}
 
-    // Validate + normalize
-    const fallback = buildFallback({ platform: platformLabel, tone, length, language, topic });
-
+    const fallback = buildFallback({ platform: platformLabel, tone, length, language, topic, persona });
     const out = normalize(parsed || {}, fallback);
+
     return ok(out);
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 }
+
+/* ---------------- Helpers ---------------- */
 
 function ok(json) {
   return new Response(JSON.stringify(json), {
@@ -79,13 +108,13 @@ function normalize(obj, fallback) {
   const hooks = Array.isArray(obj.hooks) ? obj.hooks.filter(Boolean) : [];
   const hashtags = Array.isArray(obj.hashtags) ? obj.hashtags.filter(Boolean) : [];
 
-  const script = obj.script && typeof obj.script === "object" ? obj.script : {};
+  const script = typeof obj.script === "object" ? obj.script : {};
   const intro = (script.intro || "").trim();
   const body = (script.body || "").trim();
   const cta = (script.cta || "").trim();
 
   return {
-    hooks: hooks.length >= 5 ? hooks.slice(0, 5) : fallback.hooks,
+    hooks: hooks.length === 5 ? hooks : fallback.hooks,
     script: {
       intro: intro || fallback.script.intro,
       body: body || fallback.script.body,
@@ -98,47 +127,82 @@ function normalize(obj, fallback) {
   };
 }
 
-function buildFallback({ platform, tone, length, language, topic }) {
+function detectPersona(topic = "") {
+  const t = topic.toLowerCase();
+
+  if (
+    t.includes("مطعم") || t.includes("اكل") || t.includes("تجربة") ||
+    t.includes("review") || t.includes("تقييم") ||
+    t.includes("game") || t.includes("لعبة")
+  ) {
+    return "reviewer";
+  }
+
+  if (
+    t.includes("شرح") || t.includes("تعلم") || t.includes("how") ||
+    t.includes("tips") || t.includes("نصائح")
+  ) {
+    return "educator";
+  }
+
+  if (
+    t.includes("قصة") || t.includes("حصل") || t.includes("story")
+  ) {
+    return "storyteller";
+  }
+
+  return "general_creator";
+}
+
+function buildFallback({ platform, length, language, topic, persona }) {
   const isAr = language === "Arabic";
-  const p = platform;
   const L = Number(length) || 30;
 
   if (isAr) {
     return {
       hooks: [
-        `قبل ما تعمل/ي ${topic}… خد/ي بالك من النقطة دي!`,
-        `ليه أغلب الناس بتغلط في ${topic}؟`,
-        `لو عندك 30 ثانية… ده أهم شيء عن ${topic}.`,
-        `3 خطوات هتخليك/ي تعمل/ي ${topic} صح.`,
-        `آخر نصيحة هتفرق معاك جدًا في ${topic}.`
+        `خلّيك معايا ثانية…`,
+        `اللي حصل معايا في ${topic} ده غريب.`,
+        `مكنتش متوقع ده من ${topic}.`,
+        `رأيي بصراحة في ${topic}.`,
+        `آخر حتة دي فرقت معايا.`
       ],
       script: {
-        intro: `النهارده هقولك بسرعة إزاي تبدأ في: ${topic}.`,
-        body: `أول حاجة: حدّد/ي الهدف في جملة واحدة.\nتاني حاجة: ابدأ/ي بالمعلومة الأقوى الأول.\nتالت حاجة: مثال سريع + نتيجة واضحة.\nخلي الكلام بسيط ومباشر وبنَفَس ${tone.toLowerCase()}.\nوخلّي الفيديو حوالي ${L} ثانية على ${p}.`,
-        cta: `لو الفيديو فادك، اعمل/ي متابعة واكتب/ي "تم" عشان أبعتلك أفكار زيادة.`
+        intro: `خلّيني أحكيلك بسرعة عن ${topic}.`,
+        body: `وأنا بتعامل مع الموضوع ده، لاحظت حاجة مهمة.
+الموضوع مش في التفاصيل الكتير… الموضوع في إحساسك وانت بتجرب.
+في حاجات بتبان بسيطة، بس تأثيرها كبير.
+لو ركزت في النقطة دي، هتفهم الصورة كلها.`,
+        cta: `لو حابب تسمع رأيي في موضوع تاني، اكتبلي في الكومنت.`
       },
-      caption: `سكريبت سريع عن: ${topic} ✅`,
+      caption: `رأيي الحقيقي عن ${topic} 👀`,
       hashtags: [
-        "#تيك_توك", "#ريلز", "#صناع_المحتوى", "#افكار_محتوى",
-        "#تسويق", "#سوشيال_ميديا", "#ذكاء_اصطناعي", "#نصائح"
+        "#تيك_توك", "#ريلز", "#صناع_المحتوى",
+        "#تجربة", "#رأي", "#محتوى", "#سوشيال_ميديا", "#كريتور"
       ]
     };
   }
 
   return {
     hooks: [
-      `Before you try "${topic}", do this first.`,
-      `Most people mess this up about "${topic}"…`,
-      `In 30 seconds, here’s the easiest way to "${topic}".`,
-      `3 quick steps to improve "${topic}" today.`,
-      `The last tip will save you time on "${topic}".`
+      `Wait a second…`,
+      `Here’s what surprised me about ${topic}.`,
+      `I didn’t expect this from ${topic}.`,
+      `My honest take on ${topic}.`,
+      `This part changed my opinion.`
     ],
     script: {
-      intro: `Quick breakdown on: ${topic}.`,
-      body: `Step 1: Define the goal in one sentence.\nStep 2: Lead with the strongest insight first.\nStep 3: Show a mini example + clear result.\nKeep it ${tone.toLowerCase()} and simple.\nAim for ~${L}s on ${p}.`,
-      cta: `If this helped, follow for more and comment "DONE" for extra ideas.`
+      intro: `Let me tell you about my experience with ${topic}.`,
+      body: `While dealing with this, something stood out to me.
+It’s not about too many details… it’s about how it feels.
+Small things can change the whole picture.
+Once you notice that, everything makes sense.`,
+      cta: `If you want my take on another topic, drop it in the comments.`
     },
-    caption: `A quick script about: ${topic} ✅`,
-    hashtags: ["#contentcreator","#shorts","#tiktok","#reels","#socialmedia","#marketing","#ai","#creatorTips"]
+    caption: `My honest take on ${topic} 🎯`,
+    hashtags: [
+      "#creator", "#shorts", "#reels",
+      "#experience", "#opinion", "#content", "#ai", "#socialmedia"
+    ]
   };
 }
