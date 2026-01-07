@@ -575,3 +575,21 @@ button:active{ transform: scale(0.98); }
   }
   .orb{ display:none; }
 }
+/* Sticky Generate bar for mobile */
+.generate-bar{
+  margin-top: 10px;
+}
+
+@media (max-width: 560px){
+  .generate-bar{
+    position: sticky;
+    bottom: 86px; /* فوق الـ bottom nav */
+    z-index: 50;
+    padding-top: 10px;
+    background: linear-gradient(180deg, rgba(11,18,32,0), rgba(11,18,32,0.75) 45%, rgba(11,18,32,0.90));
+    backdrop-filter: blur(8px);
+  }
+  .btn-primary{
+    border-radius: 16px;
+  }
+}
