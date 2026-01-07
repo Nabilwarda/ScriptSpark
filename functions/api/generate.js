@@ -1,24 +1,28 @@
+// /functions/api/generate.js
+
 export async function onRequest({ request, env }) {
-  // Handle CORS preflight
+  // CORS preflight
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   if (request.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json", ...corsHeaders() }
-    });
+    return jsonErr(405, "Method Not Allowed");
   }
 
-  return onRequestPost({ request, env });
-}
-
-export async function onRequestPost({ request, env }) {
   try {
-    const { platform, tone, length, language, topic } = await request.json();
+    const apiKey = (env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim();
+    if (!apiKey) return jsonErr(500, "Missing GEMINI_API_KEY (or GOOGLE_API_KEY) in environment variables");
 
-    const platformLabel = platform || "TikTok";
+    const body = await request.json();
+    const platform = body.platform || "TikTok";
+    const tone = body.tone || "Friendly";
+    const length = Number(body.length || 30);
+    const language = body.language || "Arabic";
+    const topic = (body.topic || "").trim();
+
+    if (!topic) return jsonErr(400, "Missing topic");
+
     const langLabel =
       language === "Arabic"
         ? "Arabic (Egyptian colloquial, spoken)"
@@ -26,6 +30,7 @@ export async function onRequestPost({ request, env }) {
 
     const persona = detectPersona(topic);
 
+    // IMPORTANT: prompt enforces SPOKEN style + JSON only
     const schema = `{
   "hooks": ["", "", "", "", ""],
   "script": { "intro": "", "body": "", "cta": "" },
@@ -34,16 +39,12 @@ export async function onRequestPost({ request, env }) {
 }`;
 
     const prompt = `
-You are a professional content creator writing a SPOKEN VIDEO SCRIPT.
+Return ONLY valid JSON. No markdown. No explanations. No text outside JSON.
 
-IMPORTANT:
-- Return ONLY valid JSON
-- No markdown
-- No explanations
-- No text outside JSON
+You are a professional content creator writing a SPOKEN VIDEO SCRIPT to be read out loud to camera.
 
 Language: ${langLabel}
-Platform: ${platformLabel}
+Platform: ${platform}
 Tone: ${tone}
 Target length: ${length} seconds
 Topic: ${topic}
@@ -52,168 +53,202 @@ Persona: ${persona}
 Return EXACTLY this JSON schema:
 ${schema}
 
-Persona rules:
-- If persona is "reviewer":
-  Use first person.
-  Speak as someone sharing a real experience or opinion.
-  Focus on feelings, impressions, and honest reaction.
-- If persona is "educator":
-  Explain the idea conversationally.
-  No teaching tone, no steps.
-- If persona is "storyteller":
-  Tell a short relatable situation or story.
-- If persona is "general_creator":
-  Share an insight or opinion naturally.
-
-General rules:
-- This must sound like REAL speech said to a camera.
+Rules:
+- This must sound like REAL speech (natural, conversational).
 - Do NOT use steps, lists, bullets, or numbered instructions.
-- Do NOT say "Step 1", "First", "أول حاجة", etc.
-- Use short sentences and pauses with "…".
-- hooks must be exactly 5, punchy and spoken.
-- script.intro/body/cta must be natural spoken language.
+- Do NOT say "Step 1", "First", "أول حاجة", "تاني حاجة", etc.
+- Use short sentences and pauses with "…" when appropriate.
+- hooks must be exactly 5, punchy, SPOKEN hooks.
+- script.intro/body/cta must be non-empty and spoken.
 - caption must be ONE short sentence.
 - hashtags must be 8–12, each starting with #.
-- Use ONLY the selected language. No mixing.
-- Never mention AI or prompts.
+- Use ONLY the selected language. No mixing languages.
+- Never mention AI, prompts, policies, or instructions.
 `.trim();
 
-    const apiKey = (env.GEMINI_API_KEY || "").trim();
-    if (!apiKey) {
-      return jsonErr(500, "Missing GEMINI_API_KEY in environment variables");
+    // موديلات نجربها بالترتيب (الأحدث الأول)
+    const MODEL_CANDIDATES = [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-2.0-flash",
+      "gemini-2.5-pro"
+    ];
+
+    const attempts = [];
+
+    for (const model of MODEL_CANDIDATES) {
+      const attempt = await callGemini({
+        apiKey,
+        model,
+        prompt,
+        temperature: 0.8,
+        maxOutputTokens: 900
+      });
+
+      attempts.push({
+        model,
+        ok: attempt.ok,
+        status: attempt.status,
+        error: attempt.error || null,
+        rawPreview: attempt.rawPreview || null
+      });
+
+      if (!attempt.ok) continue;
+
+      // extract+parse JSON
+      const extracted = extractJsonObject(attempt.text || "");
+      if (!extracted) continue;
+
+      let parsed;
+      try {
+        parsed = JSON.parse(extracted);
+      } catch {
+        continue;
+      }
+
+      // validate shape strictly (no fallback زي ما انت طلبت)
+      try {
+        const out = normalizeStrict(parsed);
+        return jsonOk(out);
+      } catch (e) {
+        // shape not ok -> try next model
+        attempts[attempts.length - 1].error = `Invalid shape: ${e.message}`;
+        continue;
+      }
     }
 
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    return jsonErr(500, "All models failed or returned non-valid JSON", { attempts });
 
-    console.log("[Gemini] Request meta:", {
-      platform: platformLabel,
-      tone,
-      length,
-      language,
-      persona
-    });
-    console.log("[Gemini] Prompt length:", prompt.length);
+  } catch (err) {
+    return jsonErr(500, "Server error", { message: err?.message || String(err) });
+  }
+}
 
+/* ---------------- Gemini Call ---------------- */
+
+async function callGemini({ apiKey, model, prompt, temperature, maxOutputTokens }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey
+      },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 900
-        },
-        // Helps reduce "silence" / empty output in some cases
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
-        ]
+          temperature,
+          maxOutputTokens
+        }
       })
     });
 
     const resText = await res.text();
-    let raw = null;
-    try {
-      raw = resText ? JSON.parse(resText) : null;
-    } catch {
-      raw = null;
-    }
 
-    console.log("[Gemini] HTTP:", res.status);
+    let raw = null;
+    try { raw = resText ? JSON.parse(resText) : null; } catch { raw = null; }
 
     if (!res.ok) {
-      console.log("[Gemini] Non-OK body:", resText);
-      return jsonErr(res.status, "Gemini API error", {
+      return {
+        ok: false,
         status: res.status,
-        body: raw || resText
-      });
+        error: raw?.error?.message || "Gemini API error",
+        rawPreview: preview(resText)
+      };
     }
 
-    if (!raw) {
-      console.log("[Gemini] Non-JSON success body:", resText);
-      return jsonErr(500, "Gemini returned non-JSON response", { body: resText });
-    }
-
-    // If Gemini returned no candidates, return a clear error
-    if (!raw.candidates || !raw.candidates.length) {
-      return jsonErr(500, "Gemini returned no candidates", {
-        rawPreview: safePreview(raw, 2000)
-      });
+    if (!raw?.candidates?.length) {
+      return {
+        ok: false,
+        status: res.status,
+        error: "No candidates returned",
+        rawPreview: preview(resText)
+      };
     }
 
     const c0 = raw.candidates[0];
-
-    // These are super useful in Cloudflare logs
-    if (c0.finishReason) console.log("[Gemini] finishReason:", c0.finishReason);
-    if (c0.safetyRatings) console.log("[Gemini] safetyRatings:", c0.safetyRatings);
-
-    // Extract ALL parts text
-    let text = "";
     const parts = c0?.content?.parts;
-    if (Array.isArray(parts)) {
-      text = parts
-        .map(p => (p && typeof p.text === "string" ? p.text : ""))
-        .join("\n")
-        .trim();
-    }
 
-    console.log("[Gemini] Extracted text length:", text.length);
+    const text = Array.isArray(parts)
+      ? parts.map(p => (typeof p?.text === "string" ? p.text : "")).join("\n").trim()
+      : "";
 
-    if (!text) {
-      return jsonErr(500, "Gemini returned empty text", {
-        finishReason: c0.finishReason || null,
-        safetyRatings: c0.safetyRatings || null,
-        rawPreview: safePreview(raw, 2000)
-      });
-    }
-
-    // Clean code fences if any
-    text = text.replace(/```json|```/gi, "").trim();
-
-    // Parse JSON
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      console.log("[Gemini] JSON parse failed. Raw preview:", text.slice(0, 600));
-      return jsonErr(500, "AI did not return valid JSON", {
-        parseError: e.message,
-        rawTextPreview: text.slice(0, 1500)
-      });
-    }
-
-    const out = normalize(parsed);
-    return ok(out);
-
-  } catch (err) {
-    console.log("[Server] Error:", err);
-    return jsonErr(500, "Server error", { message: err.message });
+    return {
+      ok: true,
+      status: res.status,
+      text
+    };
+  } catch (e) {
+    return { ok: false, status: 0, error: e.message || "Network error" };
   }
 }
 
-/* ---------------- Helpers ---------------- */
+/* ---------------- Validation & JSON extraction ---------------- */
 
-function ok(json) {
-  return new Response(JSON.stringify(json), {
-    headers: { "Content-Type": "application/json", ...corsHeaders() }
-  });
+function normalizeStrict(obj) {
+  if (!obj || typeof obj !== "object") throw new Error("Not an object");
+
+  if (!Array.isArray(obj.hooks) || obj.hooks.length !== 5) {
+    throw new Error("hooks must be exactly 5");
+  }
+
+  if (!obj.script || typeof obj.script !== "object") throw new Error("script missing");
+
+  const intro = String(obj.script.intro || "").trim();
+  const body = String(obj.script.body || "").trim();
+  const cta = String(obj.script.cta || "").trim();
+  if (!intro || !body || !cta) throw new Error("script fields must be non-empty");
+
+  const caption = String(obj.caption || "").trim();
+  if (!caption) throw new Error("caption must be non-empty");
+
+  if (!Array.isArray(obj.hashtags) || obj.hashtags.length < 8) {
+    throw new Error("hashtags must be 8+");
+  }
+
+  const hashtags = obj.hashtags
+    .slice(0, 12)
+    .map(x => String(x || "").trim())
+    .filter(Boolean)
+    .map(h => (h.startsWith("#") ? h : `#${h}`));
+
+  return {
+    hooks: obj.hooks.map(x => String(x || "").trim()).filter(Boolean).slice(0, 5),
+    script: { intro, body, cta },
+    caption,
+    hashtags
+  };
 }
 
-function jsonErr(status, error, extra = null) {
-  return new Response(
-    JSON.stringify({
-      error,
-      ...(extra ? { extra } : {})
-    }),
-    {
-      status,
-      headers: { "Content-Type": "application/json", ...corsHeaders() }
-    }
-  );
+function extractJsonObject(text) {
+  // remove code fences just in case
+  const clean = String(text || "").replace(/```json|```/gi, "").trim();
+  const first = clean.indexOf("{");
+  const last = clean.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return null;
+  return clean.slice(first, last + 1);
 }
+
+/* ---------------- Persona ---------------- */
+
+function detectPersona(topic = "") {
+  const t = String(topic || "").toLowerCase();
+
+  if (t.includes("مطعم") || t.includes("اكل") || t.includes("تجربة") || t.includes("review") || t.includes("تقييم")) {
+    return "reviewer";
+  }
+  if (t.includes("شرح") || t.includes("تعلم") || t.includes("how") || t.includes("tips") || t.includes("نصائح")) {
+    return "educator";
+  }
+  if (t.includes("قصة") || t.includes("حصل") || t.includes("story")) {
+    return "storyteller";
+  }
+  return "general_creator";
+}
+
+/* ---------------- Response helpers ---------------- */
 
 function corsHeaders() {
   return {
@@ -223,74 +258,21 @@ function corsHeaders() {
   };
 }
 
-function safePreview(obj, maxLen = 1500) {
-  try {
-    const s = JSON.stringify(obj);
-    return s.length > maxLen ? s.slice(0, maxLen) + "…" : s;
-  } catch {
-    return null;
-  }
+function jsonOk(data) {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { "Content-Type": "application/json", ...corsHeaders() }
+  });
 }
 
-function normalize(obj) {
-  if (
-    !Array.isArray(obj.hooks) ||
-    obj.hooks.length !== 5 ||
-    !obj.script ||
-    typeof obj.script !== "object" ||
-    !obj.script.intro ||
-    !obj.script.body ||
-    !obj.script.cta ||
-    !obj.caption ||
-    !Array.isArray(obj.hashtags) ||
-    obj.hashtags.length < 8
-  ) {
-    throw new Error("Invalid AI response structure");
-  }
-
-  return {
-    hooks: obj.hooks.map(String),
-    script: {
-      intro: String(obj.script.intro).trim(),
-      body: String(obj.script.body).trim(),
-      cta: String(obj.script.cta).trim()
-    },
-    caption: String(obj.caption).trim(),
-    hashtags: obj.hashtags
-      .slice(0, 12)
-      .map(h => {
-        const s = String(h).trim();
-        return s.startsWith("#") ? s : `#${s}`;
-      })
-  };
+function jsonErr(status, error, extra = null) {
+  return new Response(JSON.stringify({ error, ...(extra ? { extra } : {}) }), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders() }
+  });
 }
 
-function detectPersona(topic = "") {
-  const t = String(topic || "").toLowerCase();
-
-  if (
-    t.includes("مطعم") ||
-    t.includes("اكل") ||
-    t.includes("تجربة") ||
-    t.includes("review") ||
-    t.includes("تقييم") ||
-    t.includes("game") ||
-    t.includes("لعبة")
-  ) return "reviewer";
-
-  if (
-    t.includes("شرح") ||
-    t.includes("تعلم") ||
-    t.includes("how") ||
-    t.includes("tips") ||
-    t.includes("نصائح")
-  ) return "educator";
-
-  if (
-    t.includes("قصة") ||
-    t.includes("حصل") ||
-    t.includes("story")
-  ) return "storyteller";
-
-  return "general_creator";
+function preview(s, n = 1500) {
+  const str = String(s || "");
+  return str.length > n ? str.slice(0, n) + "…" : str;
 }
