@@ -663,6 +663,8 @@
   // Events
   // =========================
   async function onGenerateSubmit(e) {
+    if (el.btnGenerate.disabled) return;
+
     e.preventDefault();
 
     const topic = (el.topic.value || "").trim();
