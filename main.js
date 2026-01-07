@@ -7,7 +7,7 @@
   const STORAGE = {
     LIBRARY: "ss_library",
     UI_LANG: "ss_ui_lang",
-    API_URL: "ss_api_url"
+    API_URL: "ss_api_url",
   };
 
   const DEFAULT_API_URL = "/api/generate";
@@ -35,7 +35,8 @@
       cleared: "Library cleared.",
       exported: "Exported JSON.",
       nothingToExport: "Nothing to export yet.",
-      connectionFailed: "AI request failed. Check your API endpoint and try again.",
+      connectionFailed:
+        "AI request failed. Check your API endpoint and try again.",
 
       hooks: "Hooks (5)",
       script: "Script",
@@ -57,7 +58,7 @@
       platformAll: "All Platforms",
 
       apiSaved: "Settings saved.",
-      apiReset: "Settings reset."
+      apiReset: "Settings reset.",
     },
     ar: {
       title: "ScriptSpark | صانع محتوى بالذكاء الاصطناعي",
@@ -77,7 +78,8 @@
       cleared: "تم مسح المكتبة.",
       exported: "تم تصدير JSON.",
       nothingToExport: "لا يوجد شيء لتصديره.",
-      connectionFailed: "فشل طلب الذكاء الاصطناعي. تأكد من رابط الـ API وحاول مرة أخرى.",
+      connectionFailed:
+        "فشل طلب الذكاء الاصطناعي. تأكد من رابط الـ API وحاول مرة أخرى.",
 
       hooks: "هوكات (٥)",
       script: "السكريبت",
@@ -99,14 +101,14 @@
       platformAll: "كل المنصات",
 
       apiSaved: "تم حفظ الإعدادات.",
-      apiReset: "تمت إعادة الضبط."
-    }
+      apiReset: "تمت إعادة الضبط.",
+    },
   };
 
   const state = {
     uiLang: "en",
     apiUrl: DEFAULT_API_URL,
-    library: []
+    library: [],
   };
 
   // =========================
@@ -119,7 +121,7 @@
     create: $("#view-create"),
     library: $("#view-library"),
     settings: $("#view-settings"),
-    help: $("#view-help")
+    help: $("#view-help"),
   };
 
   const el = {
@@ -150,18 +152,24 @@
     btnSaveSettings: $("#btn-save-settings"),
     btnResetSettings: $("#btn-reset-settings"),
     btnUiEn: $("#btn-ui-en"),
-    btnUiAr: $("#btn-ui-ar")
+    btnUiAr: $("#btn-ui-ar"),
   };
 
   // =========================
   // Utilities
   // =========================
   function t(key) {
-    return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.en[key] || key;
+    return (
+      (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.en[key] || key
+    );
   }
 
   function safeJsonParse(str, fallback) {
-    try { return JSON.parse(str); } catch { return fallback; }
+    try {
+      return JSON.parse(str);
+    } catch {
+      return fallback;
+    }
   }
 
   function nowIso() {
@@ -170,14 +178,22 @@
 
   function formatTime(ts) {
     const d = new Date(ts);
-    const opts = { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" };
+    const opts = {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    };
     return d.toLocaleString(state.uiLang === "ar" ? "ar-EG" : "en-US", opts);
   }
 
   function toast(message, type = "default", timeout = 2400) {
     const container = $("#toast-container");
     const node = document.createElement("div");
-    node.className = `toast ${type === "success" ? "success" : type === "danger" ? "danger" : ""}`.trim();
+    node.className = `toast ${
+      type === "success" ? "success" : type === "danger" ? "danger" : ""
+    }`.trim();
 
     const dot = document.createElement("div");
     dot.className = "toast-dot";
@@ -219,7 +235,9 @@
 
   function setGenerating(isGenerating) {
     el.btnGenerate.disabled = isGenerating;
-    el.btnGenerateText.textContent = isGenerating ? t("generating") : t("generate");
+    el.btnGenerateText.textContent = isGenerating
+      ? t("generating")
+      : t("generate");
     el.loaderDots.style.display = isGenerating ? "flex" : "none";
   }
 
@@ -230,7 +248,10 @@
   }
 
   function persistLibrary() {
-    localStorage.setItem(STORAGE.LIBRARY, JSON.stringify(state.library.slice(0, LIBRARY_MAX)));
+    localStorage.setItem(
+      STORAGE.LIBRARY,
+      JSON.stringify(state.library.slice(0, LIBRARY_MAX))
+    );
   }
 
   function persistSettings() {
@@ -253,12 +274,16 @@
 
     // Text nodes
     $$("[data-en][data-ar]").forEach((node) => {
-      node.textContent = state.uiLang === "ar" ? node.dataset.ar : node.dataset.en;
+      node.textContent =
+        state.uiLang === "ar" ? node.dataset.ar : node.dataset.en;
     });
 
     // Placeholders
     $$("[data-ph-en][data-ph-ar]").forEach((node) => {
-      node.setAttribute("placeholder", state.uiLang === "ar" ? node.dataset.phAr : node.dataset.phEn);
+      node.setAttribute(
+        "placeholder",
+        state.uiLang === "ar" ? node.dataset.phAr : node.dataset.phEn
+      );
     });
 
     // Sync nav labels used in JS strings
@@ -295,7 +320,7 @@
     "#/create": views.create,
     "#/library": views.library,
     "#/settings": views.settings,
-    "#/help": views.help
+    "#/help": views.help,
   };
 
   function showView(hash) {
@@ -305,10 +330,16 @@
     target.style.display = "block";
 
     // Active nav
-    $$(".nav-link").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === hash));
+    $$(".nav-link").forEach((a) =>
+      a.classList.toggle("active", a.getAttribute("href") === hash)
+    );
 
     // Accessibility: move focus to main container
-    try { el.main.focus({ preventScroll: true }); } catch { /* noop */ }
+    try {
+      el.main.focus({ preventScroll: true });
+    } catch {
+      /* noop */
+    }
 
     // Special renders
     if (target === views.library) renderLibrary();
@@ -336,15 +367,21 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(`HTTP ${res.status} ${txt}`);
       }
+      console.log("RAW RESPONSE:", res);
 
-      const data = await res.json();
+      const text = await res.text();
+      console.log("RAW BODY:", text);
+
+      const data = JSON.parse(text);
+      console.log("PARSED JSON:", data);
+
       return data;
     } finally {
       clearTimeout(timeout);
@@ -393,11 +430,15 @@
 
   function buildFullScript(out) {
     const s = out?.script || {};
-    return `${t("intro")}:\n${s.intro || ""}\n\n${t("body")}:\n${s.body || ""}\n\n${t("cta")}:\n${s.cta || ""}`.trim();
+    return `${t("intro")}:\n${s.intro || ""}\n\n${t("body")}:\n${
+      s.body || ""
+    }\n\n${t("cta")}:\n${s.cta || ""}`.trim();
   }
 
   function buildHashtags(out) {
-    return (out?.hashtags || []).map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ");
+    return (out?.hashtags || [])
+      .map((h) => (h.startsWith("#") ? h : `#${h}`))
+      .join(" ");
   }
 
   function renderSkeleton() {
@@ -497,7 +538,10 @@
     const scriptBlock = textBox(buildFullScript(out), dir);
     const script = createSection(t("script"), scriptBlock);
     const cap = createSection(t("caption"), textBox(out.caption || "", dir));
-    const tags = createSection(t("hashtags"), textBox(buildHashtags(out), "ltr"));
+    const tags = createSection(
+      t("hashtags"),
+      textBox(buildHashtags(out), "ltr")
+    );
 
     // More actions (bottom)
     const actions = document.createElement("div");
@@ -551,7 +595,8 @@
     const platform = el.libraryPlatform?.value || "all";
 
     const filtered = state.library.filter((item) => {
-      const matchesQuery = !query || (item.topic || "").toLowerCase().includes(query);
+      const matchesQuery =
+        !query || (item.topic || "").toLowerCase().includes(query);
       const matchesPlatform = platform === "all" || item.platform === platform;
       return matchesQuery && matchesPlatform;
     });
@@ -587,7 +632,9 @@
 
       const meta = document.createElement("div");
       meta.className = "lib-meta";
-      meta.textContent = `${item.platform} • ${item.tone} • ${item.length}s • ${item.language} • ${formatTime(item.createdAt)}`;
+      meta.textContent = `${item.platform} • ${item.tone} • ${item.length}s • ${
+        item.language
+      } • ${formatTime(item.createdAt)}`;
 
       left.append(title, meta);
 
@@ -644,7 +691,9 @@
       return;
     }
 
-    const blob = new Blob([JSON.stringify(state.library, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(state.library, null, 2)], {
+      type: "application/json",
+    });
     const a = document.createElement("a");
     const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
     a.download = `scriptspark_library_${date}.json`;
@@ -677,7 +726,7 @@
       tone: el.tone.value,
       length: Number(el.length.value),
       language: el.language.value,
-      topic
+      topic,
     };
 
     renderSkeleton();
@@ -689,9 +738,12 @@
       // Shape validation (soft)
       const normalized = {
         hooks: Array.isArray(out.hooks) ? out.hooks.slice(0, 5) : [],
-        script: typeof out.script === "object" && out.script ? out.script : { intro: "", body: "", cta: "" },
+        script:
+          typeof out.script === "object" && out.script
+            ? out.script
+            : { intro: "", body: "", cta: "" },
         caption: typeof out.caption === "string" ? out.caption : "",
-        hashtags: Array.isArray(out.hashtags) ? out.hashtags : []
+        hashtags: Array.isArray(out.hashtags) ? out.hashtags : [],
       };
 
       renderOutput(normalized, payload);
@@ -723,16 +775,20 @@
         tone: lastMeta.tone,
         length: lastMeta.length,
         language: lastMeta.language,
-        output: lastOut
+        output: lastOut,
       });
       toast(t("saved"), "success");
       return;
     }
 
-    if (action === "copy-script") return copyToClipboard(buildFullScript(lastOut));
-    if (action === "copy-caption") return copyToClipboard(lastOut.caption || "");
-    if (action === "copy-hashtags") return copyToClipboard(buildHashtags(lastOut));
-    if (action === "copy-json") return copyToClipboard(JSON.stringify(lastOut, null, 2));
+    if (action === "copy-script")
+      return copyToClipboard(buildFullScript(lastOut));
+    if (action === "copy-caption")
+      return copyToClipboard(lastOut.caption || "");
+    if (action === "copy-hashtags")
+      return copyToClipboard(buildHashtags(lastOut));
+    if (action === "copy-json")
+      return copyToClipboard(JSON.stringify(lastOut, null, 2));
   }
 
   function onLibraryClick(e) {
@@ -764,10 +820,14 @@
       return;
     }
 
-    if (action === "lib-copy-script") return copyToClipboard(buildFullScript(item.output));
-    if (action === "lib-copy-caption") return copyToClipboard(item.output?.caption || "");
-    if (action === "lib-copy-hashtags") return copyToClipboard(buildHashtags(item.output));
-    if (action === "lib-copy-json") return copyToClipboard(JSON.stringify(item, null, 2));
+    if (action === "lib-copy-script")
+      return copyToClipboard(buildFullScript(item.output));
+    if (action === "lib-copy-caption")
+      return copyToClipboard(item.output?.caption || "");
+    if (action === "lib-copy-hashtags")
+      return copyToClipboard(buildHashtags(item.output));
+    if (action === "lib-copy-json")
+      return copyToClipboard(JSON.stringify(item, null, 2));
   }
 
   function onSaveSettings() {
@@ -791,7 +851,10 @@
     loadState();
 
     // Track user change on content language
-    el.language.addEventListener("change", () => (el.language.dataset.userChanged = "1"));
+    el.language.addEventListener(
+      "change",
+      () => (el.language.dataset.userChanged = "1")
+    );
 
     // Language toggle
     el.langToggle.addEventListener("click", () => {
