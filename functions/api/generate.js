@@ -12,7 +12,9 @@ export async function onRequest({ request, env }) {
 
   try {
     const apiKey = (env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim();
-    if (!apiKey) return jsonErr(500, "Missing GEMINI_API_KEY (or GOOGLE_API_KEY) in environment variables");
+    if (!apiKey) {
+      return jsonErr(500, "Missing GEMINI_API_KEY (or GOOGLE_API_KEY) in environment variables");
+    }
 
     const body = await request.json();
     const platform = body.platform || "TikTok";
@@ -30,7 +32,6 @@ export async function onRequest({ request, env }) {
 
     const persona = detectPersona(topic);
 
-    // IMPORTANT: prompt enforces SPOKEN style + JSON only
     const schema = `{
   "hooks": ["", "", "", "", ""],
   "script": { "intro": "", "body": "", "cta": "" },
@@ -66,58 +67,60 @@ Rules:
 - Never mention AI, prompts, policies, or instructions.
 `.trim();
 
-    // موديلات نجربها بالترتيب (الأحدث الأول)
-    const MODEL_CANDIDATES = [
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-2.0-flash",
-      "gemini-2.5-pro"
-    ];
+    // ✅ موديل واحد فقط (Flash)
+    const MODEL = "gemini-2.5-flash";
 
-    const attempts = [];
+    const attempt = await callGemini({
+      apiKey,
+      model: MODEL,
+      prompt,
+      temperature: 0.8,
+      maxOutputTokens: 900
+    });
 
-    for (const model of MODEL_CANDIDATES) {
-      const attempt = await callGemini({
-        apiKey,
-        model,
-        prompt,
-        temperature: 0.8,
-        maxOutputTokens: 900
-      });
-
-      attempts.push({
-        model,
-        ok: attempt.ok,
+    // لو فشل: رجّع تفاصيل واضحة
+    if (!attempt.ok) {
+      return jsonErr(500, "Gemini call failed", {
+        model: MODEL,
         status: attempt.status,
         error: attempt.error || null,
         rawPreview: attempt.rawPreview || null
       });
-
-      if (!attempt.ok) continue;
-
-      // extract+parse JSON
-      const extracted = extractJsonObject(attempt.text || "");
-      if (!extracted) continue;
-
-      let parsed;
-      try {
-        parsed = JSON.parse(extracted);
-      } catch {
-        continue;
-      }
-
-      // validate shape strictly (no fallback زي ما انت طلبت)
-      try {
-        const out = normalizeStrict(parsed);
-        return jsonOk(out);
-      } catch (e) {
-        // shape not ok -> try next model
-        attempts[attempts.length - 1].error = `Invalid shape: ${e.message}`;
-        continue;
-      }
     }
 
-    return jsonErr(500, "All models failed or returned non-valid JSON", { attempts });
+    // extract+parse JSON
+    const extracted = extractJsonObject(attempt.text || "");
+    if (!extracted) {
+      return jsonErr(500, "No JSON object found in model response", {
+        model: MODEL,
+        textPreview: preview(attempt.text, 1200)
+      });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(extracted);
+    } catch (e) {
+      return jsonErr(500, "AI did not return valid JSON", {
+        model: MODEL,
+        parseError: e.message,
+        rawTextPreview: preview(extracted, 1500)
+      });
+    }
+
+    // validate shape strictly (no fallback)
+    let out;
+    try {
+      out = normalizeStrict(parsed);
+    } catch (e) {
+      return jsonErr(500, "Invalid AI response shape", {
+        model: MODEL,
+        error: e.message,
+        parsedPreview: preview(JSON.stringify(parsed), 1500)
+      });
+    }
+
+    return jsonOk(out);
 
   } catch (err) {
     return jsonErr(500, "Server error", { message: err?.message || String(err) });
@@ -127,6 +130,8 @@ Rules:
 /* ---------------- Gemini Call ---------------- */
 
 async function callGemini({ apiKey, model, prompt, temperature, maxOutputTokens }) {
+  // ملاحظة: بنستخدم v1beta هنا زي ما كنت عامل
+  // لو ظهرلك errors غريبة، جرّب تغيّرها لـ /v1
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   try {
@@ -175,11 +180,17 @@ async function callGemini({ apiKey, model, prompt, temperature, maxOutputTokens 
       ? parts.map(p => (typeof p?.text === "string" ? p.text : "")).join("\n").trim()
       : "";
 
-    return {
-      ok: true,
-      status: res.status,
-      text
-    };
+    if (!text) {
+      return {
+        ok: false,
+        status: res.status,
+        error: "Empty text returned from candidates[0].content.parts",
+        rawPreview: preview(resText)
+      };
+    }
+
+    return { ok: true, status: res.status, text };
+
   } catch (e) {
     return { ok: false, status: 0, error: e.message || "Network error" };
   }
@@ -214,8 +225,11 @@ function normalizeStrict(obj) {
     .filter(Boolean)
     .map(h => (h.startsWith("#") ? h : `#${h}`));
 
+  const hooks = obj.hooks.map(x => String(x || "").trim()).filter(Boolean);
+  if (hooks.length !== 5) throw new Error("hooks items must be non-empty (5)");
+
   return {
-    hooks: obj.hooks.map(x => String(x || "").trim()).filter(Boolean).slice(0, 5),
+    hooks,
     script: { intro, body, cta },
     caption,
     hashtags
@@ -223,7 +237,6 @@ function normalizeStrict(obj) {
 }
 
 function extractJsonObject(text) {
-  // remove code fences just in case
   const clean = String(text || "").replace(/```json|```/gi, "").trim();
   const first = clean.indexOf("{");
   const last = clean.lastIndexOf("}");
