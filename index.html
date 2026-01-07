@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en" dir="ltr">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -50,7 +51,8 @@
       <div class="container">
         <header class="view-header">
           <h1 id="create-title" data-en="Generate Script" data-ar="توليد سكريبت">Generate Script</h1>
-          <p data-en="Create viral content in seconds" data-ar="اصنع محتوى فيروسي في ثوانٍ">Create viral content in seconds</p>
+          <p data-en="Create viral content in seconds" data-ar="اصنع محتوي  في ثوانٍ">Create viral content in seconds
+          </p>
         </header>
 
         <form id="generator-form" class="card" novalidate>
@@ -93,26 +95,27 @@
           </div>
 
           <div class="input-group full-width">
-            <label for="topic" data-en="What is your video about?" data-ar="عن ماذا يتحدث الفيديو؟">What is your video about?</label>
-            <textarea
-              id="topic"
-              required
-              data-ph-en="e.g. 5 tips for healthy skin, making a perfect coffee..."
+            <label for="topic" data-en="What is your video about?" data-ar="عن ماذا يتحدث الفيديو؟">What is your video
+              about?</label>
+            <textarea id="topic" required data-ph-en="e.g. 5 tips for healthy skin, making a perfect coffee..."
               data-ph-ar="مثال: ٥ نصائح للبشرة الصحية، إزاي تعمل قهوة مظبوطة..."
-              placeholder="e.g. 5 tips for healthy skin, making a perfect coffee..."
-            ></textarea>
-            <div id="topic-hint" class="hint" data-en="Tip: write a specific topic + target audience." data-ar="نصيحة: اكتب موضوع محدد + الفئة المستهدفة.">
+              placeholder="e.g. 5 tips for healthy skin, making a perfect coffee..."></textarea>
+            <div id="topic-hint" class="hint" data-en="Tip: write a specific topic + target audience."
+              data-ar="نصيحة: اكتب موضوع محدد + الفئة المستهدفة.">
               Tip: write a specific topic + target audience.
             </div>
           </div>
 
-          <button type="submit" id="btn-generate" class="btn-primary">
+          <button id="btn-generate" class="btn-primary">
             <span class="btn-text" data-en="Generate" data-ar="توليد">Generate</span>
-            <div class="loader-dots" aria-hidden="true" style="display: none;"><span></span><span></span><span></span></div>
+            <span class="loader-dots" aria-hidden="true">
+              <i></i><i></i><i></i>
+            </span>
           </button>
 
           <p class="tiny-note">
-            <span data-en="All rights reserved for Nabil Warda" data-ar="كل الحقوق محفوظة لـ نبيل وردة">All rights reserved for Nabil Warda</span>
+            <span data-en="All rights reserved for Nabil Warda" data-ar="كل الحقوق محفوظة لـ نبيل وردة">All rights
+              reserved for Nabil Warda</span>
           </p>
         </form>
 
@@ -127,14 +130,8 @@
           <h1 id="library-title" data-en="My Library" data-ar="مكتبتي">My Library</h1>
 
           <div class="search-bar">
-            <input
-              type="text"
-              id="library-search"
-              data-ph-en="Search topics..."
-              data-ph-ar="ابحث في المواضيع..."
-              placeholder="Search topics..."
-              autocomplete="off"
-            />
+            <input type="text" id="library-search" data-ph-en="Search topics..." data-ph-ar="ابحث في المواضيع..."
+              placeholder="Search topics..." autocomplete="off" />
             <select id="library-filter-platform" aria-label="Filter by platform">
               <option value="all" data-en="All Platforms" data-ar="كل المنصات">All Platforms</option>
               <option value="TikTok">TikTok</option>
@@ -144,7 +141,8 @@
           </div>
 
           <div class="header-actions">
-            <button id="btn-export" class="btn-secondary btn-sm" type="button" data-en="Export JSON" data-ar="تصدير JSON">Export JSON</button>
+            <button id="btn-export" class="btn-secondary btn-sm" type="button" data-en="Export JSON"
+              data-ar="تصدير JSON">Export JSON</button>
             <button id="btn-clear" class="btn-ghost btn-sm" type="button" data-en="Clear" data-ar="مسح">Clear</button>
           </div>
         </header>
@@ -158,7 +156,8 @@
       <div class="container">
         <header class="view-header">
           <h1 id="settings-title" data-en="Settings" data-ar="الإعدادات">Settings</h1>
-          <p data-en="Configure the AI endpoint and UI language." data-ar="اضبط رابط الـ API ولغة الواجهة.">Configure the AI endpoint and UI language.</p>
+          <p data-en="Configure the AI endpoint and UI language." data-ar="اضبط رابط الـ API ولغة الواجهة.">Configure
+            the AI endpoint and UI language.</p>
         </header>
 
         <div class="card">
@@ -168,17 +167,20 @@
             <label for="api-url" data-en="API URL" data-ar="رابط API">API URL</label>
             <input id="api-url" type="url" placeholder="/api/generate" autocomplete="off" />
             <div class="hint">
-              <span data-en="Default is /api/generate (best with Cloudflare Pages Functions)." data-ar="الافتراضي هو /api/generate (الأفضل مع Cloudflare Pages Functions).">
+              <span data-en="Default is /api/generate (best with Cloudflare Pages Functions)."
+                data-ar="الافتراضي هو /api/generate (الأفضل مع Cloudflare Pages Functions).">
                 Default is /api/generate (best with Cloudflare Pages Functions).
               </span>
               <br />
-            
+
             </div>
           </div>
 
           <div class="action-row">
-            <button id="btn-save-settings" class="btn-secondary" type="button" data-en="Save" data-ar="حفظ">Save</button>
-            <button id="btn-reset-settings" class="btn-ghost" type="button" data-en="Reset" data-ar="إعادة ضبط">Reset</button>
+            <button id="btn-save-settings" class="btn-secondary" type="button" data-en="Save"
+              data-ar="حفظ">Save</button>
+            <button id="btn-reset-settings" class="btn-ghost" type="button" data-en="Reset"
+              data-ar="إعادة ضبط">Reset</button>
           </div>
 
           <div class="divider"></div>
@@ -188,7 +190,7 @@
             <button id="btn-ui-en" class="btn-chip" type="button">EN</button>
             <button id="btn-ui-ar" class="btn-chip" type="button">AR</button>
           </div>
-         
+
         </div>
       </div>
     </section>
@@ -197,17 +199,20 @@
     <section id="view-help" class="view" style="display: none;" aria-labelledby="help-title">
       <div class="container">
         <div class="card help-content">
-          <h2 id="help-title" data-en="How to use ScriptSpark?" data-ar="كيف تستخدم سكريبت سبارك؟">How to use ScriptSpark?</h2>
+          <h2 id="help-title" data-en="How to use ScriptSpark?" data-ar="كيف تستخدم سكريبت سبارك؟">How to use
+            ScriptSpark?</h2>
           <ul class="help-steps">
             <li>
               <span class="step-num" aria-hidden="true">1</span>
-              <p data-en="Write a clear topic describing your video idea." data-ar="اكتب موضوعاً واضحاً يصف فكرة الفيديو الخاص بك.">
+              <p data-en="Write a clear topic describing your video idea."
+                data-ar="اكتب موضوعاً واضحاً يصف فكرة الفيديو الخاص بك.">
                 Write a clear topic describing your video idea.
               </p>
             </li>
             <li>
               <span class="step-num" aria-hidden="true">2</span>
-              <p data-en="Choose the platform, tone, length, and content language." data-ar="اختر المنصة، والأسلوب، والمدة، ولغة المحتوى.">
+              <p data-en="Choose the platform, tone, length, and content language."
+                data-ar="اختر المنصة، والأسلوب، والمدة، ولغة المحتوى.">
                 Choose the platform, tone, length, and content language.
               </p>
             </li>
@@ -218,7 +223,8 @@
               </p>
             </li>
           </ul>
-          <p class="disclaimer" data-en="Your library is saved locally on this device only." data-ar="مكتبتك بتتخزن محلياً على جهازك فقط.">
+          <p class="disclaimer" data-en="Your library is saved locally on this device only."
+            data-ar="مكتبتك بتتخزن محلياً على جهازك فقط.">
             Your library is saved locally on this device only.
           </p>
         </div>
@@ -238,4 +244,5 @@
 
   <script src="main.js"></script>
 </body>
+
 </html>
