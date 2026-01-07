@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>ScriptSpark | AI Content Creator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <a class="skip-link" href="#main" data-en="Skip to content" data-ar="تخطي إلى المحتوى">Skip to content</a>
+
+  <div class="orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <nav class="nav-bar" aria-label="Primary">
+    <div class="logo" aria-label="ScriptSpark">Script<span>Spark</span></div>
+
+    <div class="nav-actions">
+      <button id="lang-toggle" class="btn-chip" type="button" aria-label="Toggle language">AR</button>
+    </div>
+
+    <div class="nav-links" role="navigation" aria-label="Navigation">
+      <a href="#/create" class="nav-link active" aria-label="Create">
+        <span class="nav-emoji" aria-hidden="true">✨</span>
+        <span class="nav-text" data-en="Create" data-ar="إنشاء">Create</span>
+      </a>
+      <a href="#/library" class="nav-link" aria-label="Library">
+        <span class="nav-emoji" aria-hidden="true">📚</span>
+        <span class="nav-text" data-en="Library" data-ar="المكتبة">Library</span>
+      </a>
+      <a href="#/settings" class="nav-link" aria-label="Settings">
+        <span class="nav-emoji" aria-hidden="true">⚙️</span>
+        <span class="nav-text" data-en="Settings" data-ar="الإعدادات">Settings</span>
+      </a>
+      <a href="#/help" class="nav-link" aria-label="Help">
+        <span class="nav-emoji" aria-hidden="true">❓</span>
+        <span class="nav-text" data-en="Help" data-ar="مساعدة">Help</span>
+      </a>
+    </div>
+  </nav>
+
+  <main id="main" class="app" tabindex="-1">
+    <!-- Create View -->
+    <section id="view-create" class="view" aria-labelledby="create-title">
+      <div class="container">
+        <header class="view-header">
+          <h1 id="create-title" data-en="Generate Script" data-ar="توليد سكريبت">Generate Script</h1>
+          <p data-en="Create viral content in seconds" data-ar="اصنع محتوى فيروسي في ثوانٍ">Create viral content in seconds</p>
+        </header>
+
+        <form id="generator-form" class="card" novalidate>
+          <div class="form-grid">
+            <div class="input-group">
+              <label for="platform" data-en="Platform" data-ar="المنصة">Platform</label>
+              <select id="platform">
+                <option value="TikTok">TikTok</option>
+                <option value="Instagram Reels">Instagram Reels</option>
+                <option value="YouTube Shorts">YouTube Shorts</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="tone" data-en="Tone" data-ar="الأسلوب">Tone</label>
+              <select id="tone">
+                <option value="Friendly">Friendly</option>
+                <option value="Bold">Bold</option>
+                <option value="Funny">Funny</option>
+                <option value="Serious">Serious</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="length" data-en="Length" data-ar="المدة">Length</label>
+              <select id="length">
+                <option value="15">15s</option>
+                <option value="30" selected>30s</option>
+                <option value="60">60s</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="language" data-en="Content Language" data-ar="لغة المحتوى">Content Language</label>
+              <select id="language">
+                <option value="Arabic">Arabic</option>
+                <option value="English">English</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group full-width">
+            <label for="topic" data-en="What is your video about?" data-ar="عن ماذا يتحدث الفيديو؟">What is your video about?</label>
+            <textarea
+              id="topic"
+              required
+              data-ph-en="e.g. 5 tips for healthy skin, making a perfect coffee..."
+              data-ph-ar="مثال: ٥ نصائح للبشرة الصحية، إزاي تعمل قهوة مظبوطة..."
+              placeholder="e.g. 5 tips for healthy skin, making a perfect coffee..."
+            ></textarea>
+            <div id="topic-hint" class="hint" data-en="Tip: write a specific topic + target audience." data-ar="نصيحة: اكتب موضوع محدد + الفئة المستهدفة.">
+              Tip: write a specific topic + target audience.
+            </div>
+          </div>
+
+          <button type="submit" id="btn-generate" class="btn-primary">
+            <span class="btn-text" data-en="Generate" data-ar="توليد">Generate</span>
+            <div class="loader-dots" aria-hidden="true" style="display: none;"><span></span><span></span><span></span></div>
+          </button>
+
+          <p class="tiny-note">
+            <span data-en="All rights reserved for Nabil Warda" data-ar="كل الحقوق محفوظة لـ نبيل وردة">All rights reserved for Nabil Warda</span>
+          </p>
+        </form>
+
+        <div id="output-container" class="output" style="display: none;" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- Library View -->
+    <section id="view-library" class="view" style="display: none;" aria-labelledby="library-title">
+      <div class="container">
+        <header class="view-header">
+          <h1 id="library-title" data-en="My Library" data-ar="مكتبتي">My Library</h1>
+
+          <div class="search-bar">
+            <input
+              type="text"
+              id="library-search"
+              data-ph-en="Search topics..."
+              data-ph-ar="ابحث في المواضيع..."
+              placeholder="Search topics..."
+              autocomplete="off"
+            />
+            <select id="library-filter-platform" aria-label="Filter by platform">
+              <option value="all" data-en="All Platforms" data-ar="كل المنصات">All Platforms</option>
+              <option value="TikTok">TikTok</option>
+              <option value="Instagram Reels" data-en="Reels" data-ar="ريلز">Reels</option>
+              <option value="YouTube Shorts" data-en="Shorts" data-ar="شورتس">Shorts</option>
+            </select>
+          </div>
+
+          <div class="header-actions">
+            <button id="btn-export" class="btn-secondary btn-sm" type="button" data-en="Export JSON" data-ar="تصدير JSON">Export JSON</button>
+            <button id="btn-clear" class="btn-ghost btn-sm" type="button" data-en="Clear" data-ar="مسح">Clear</button>
+          </div>
+        </header>
+
+        <div id="library-list" class="library-items"></div>
+      </div>
+    </section>
+
+    <!-- Settings View -->
+    <section id="view-settings" class="view" style="display: none;" aria-labelledby="settings-title">
+      <div class="container">
+        <header class="view-header">
+          <h1 id="settings-title" data-en="Settings" data-ar="الإعدادات">Settings</h1>
+          <p data-en="Configure the AI endpoint and UI language." data-ar="اضبط رابط الـ API ولغة الواجهة.">Configure the AI endpoint and UI language.</p>
+        </header>
+
+        <div class="card">
+          <h2 class="section-title" data-en="AI Endpoint" data-ar="رابط الذكاء الاصطناعي">AI Endpoint</h2>
+
+          <div class="input-group">
+            <label for="api-url" data-en="API URL" data-ar="رابط API">API URL</label>
+            <input id="api-url" type="url" placeholder="/api/generate" autocomplete="off" />
+            <div class="hint">
+              <span data-en="Default is /api/generate (best with Cloudflare Pages Functions)." data-ar="الافتراضي هو /api/generate (الأفضل مع Cloudflare Pages Functions).">
+                Default is /api/generate (best with Cloudflare Pages Functions).
+              </span>
+              <br />
+            
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-save-settings" class="btn-secondary" type="button" data-en="Save" data-ar="حفظ">Save</button>
+            <button id="btn-reset-settings" class="btn-ghost" type="button" data-en="Reset" data-ar="إعادة ضبط">Reset</button>
+          </div>
+
+          <div class="divider"></div>
+
+          <h2 class="section-title" data-en="UI Language" data-ar="لغة الواجهة">UI Language</h2>
+          <div class="action-row">
+            <button id="btn-ui-en" class="btn-chip" type="button">EN</button>
+            <button id="btn-ui-ar" class="btn-chip" type="button">AR</button>
+          </div>
+         
+        </div>
+      </div>
+    </section>
+
+    <!-- Help View -->
+    <section id="view-help" class="view" style="display: none;" aria-labelledby="help-title">
+      <div class="container">
+        <div class="card help-content">
+          <h2 id="help-title" data-en="How to use ScriptSpark?" data-ar="كيف تستخدم سكريبت سبارك؟">How to use ScriptSpark?</h2>
+          <ul class="help-steps">
+            <li>
+              <span class="step-num" aria-hidden="true">1</span>
+              <p data-en="Write a clear topic describing your video idea." data-ar="اكتب موضوعاً واضحاً يصف فكرة الفيديو الخاص بك.">
+                Write a clear topic describing your video idea.
+              </p>
+            </li>
+            <li>
+              <span class="step-num" aria-hidden="true">2</span>
+              <p data-en="Choose the platform, tone, length, and content language." data-ar="اختر المنصة، والأسلوب، والمدة، ولغة المحتوى.">
+                Choose the platform, tone, length, and content language.
+              </p>
+            </li>
+            <li>
+              <span class="step-num" aria-hidden="true">3</span>
+              <p data-en="Hit Generate and copy/save what you like." data-ar="اضغط توليد وبعدها انسخ/احفظ اللي يعجبك.">
+                Hit Generate and copy/save what you like.
+              </p>
+            </li>
+          </ul>
+          <p class="disclaimer" data-en="Your library is saved locally on this device only." data-ar="مكتبتك بتتخزن محلياً على جهازك فقط.">
+            Your library is saved locally on this device only.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <noscript>
+      <div class="container">
+        <div class="card">
+          This app needs JavaScript enabled.
+        </div>
+      </div>
+    </noscript>
+  </main>
+
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="main.js"></script>
+</body>
+</html>
