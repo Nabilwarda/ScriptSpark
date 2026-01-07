@@ -60,11 +60,25 @@ General rules:
 - hashtags must be 8–12, each starting with #.
 - Use ONLY the selected language. No mixing.
 - Never mention AI or prompts.
-`;
+`.trim();
+
+    const apiKey = (env.GEMINI_API_KEY || "").trim();
+    if (!apiKey) {
+      return jsonErr(500, "Missing GEMINI_API_KEY in environment variables");
+    }
 
     const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
-console.log("Sending prompt to Gemini:", prompt);
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+    // Debug (Cloudflare logs)
+    console.log("[Gemini] Request meta:", {
+      platform: platformLabel,
+      tone,
+      length,
+      language,
+      persona
+    });
+    console.log("[Gemini] Prompt length:", prompt.length);
 
     const res = await fetch(url, {
       method: "POST",
@@ -78,31 +92,77 @@ console.log("Sending prompt to Gemini:", prompt);
       })
     });
 
-    const raw = await res.json();
-let text = "";
-if (raw?.candidates?.length) {
-  const c = raw.candidates[0];
-  if (c.content?.parts?.length && c.content.parts[0].text) {
-    text = c.content.parts[0].text;
-  }
-}
-console.log("DEBUG RAW RESPONSE:", JSON.stringify(raw, null, 2));
+    // IMPORTANT: read as text first so we can debug non-JSON errors
+    const resText = await res.text();
+    let raw = null;
+    try {
+      raw = resText ? JSON.parse(resText) : null;
+    } catch {
+      raw = null;
+    }
 
+    console.log("[Gemini] HTTP:", res.status);
+    if (!res.ok) {
+      console.log("[Gemini] Non-OK body:", resText);
+      return jsonErr(res.status, "Gemini API error", {
+        status: res.status,
+        body: raw || resText
+      });
+    }
+
+    console.log("[Gemini] RAW RESPONSE (parsed?):", raw ? "JSON" : "TEXT");
+    if (!raw) {
+      console.log("[Gemini] RAW TEXT:", resText);
+      return jsonErr(500, "Gemini returned non-JSON response", { body: resText });
+    }
+
+    // Extract ALL text parts, not just [0]
+    let text = "";
+    const c0 = raw?.candidates?.[0];
+
+    const finishReason = c0?.finishReason;
+    const safetyRatings = c0?.safetyRatings;
+    if (finishReason) console.log("[Gemini] finishReason:", finishReason);
+    if (safetyRatings) console.log("[Gemini] safetyRatings:", safetyRatings);
+
+    const parts = c0?.content?.parts;
+    if (Array.isArray(parts)) {
+      text = parts.map(p => (p && typeof p.text === "string" ? p.text : "")).join("\n").trim();
+    }
+
+    // Sometimes models return nothing in parts but include other fields
+    console.log("[Gemini] Extracted text length:", text.length);
+
+    if (!text) {
+      // return debug info so you can see why it was empty
+      return jsonErr(500, "Gemini returned empty text", {
+        finishReason: finishReason || null,
+        safetyRatings: safetyRatings || null,
+        rawPreview: safePreview(raw, 2000)
+      });
+    }
+
+    // Clean code fences if any
+    text = text.replace(/```json|```/gi, "").trim();
+
+    // Parse JSON from model output
     let parsed;
     try {
       parsed = JSON.parse(text);
-    } catch {
-      return errorResponse("AI did not return valid JSON", text);
+    } catch (e) {
+      console.log("[Gemini] JSON parse failed. Raw text preview:", text.slice(0, 600));
+      return jsonErr(500, "AI did not return valid JSON", {
+        parseError: e.message,
+        rawTextPreview: text.slice(0, 1500)
+      });
     }
 
     const out = normalize(parsed);
     return ok(out);
 
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    console.log("[Server] Error:", err);
+    return jsonErr(500, "Server error", { message: err.message });
   }
 }
 
@@ -114,17 +174,26 @@ function ok(json) {
   });
 }
 
-function errorResponse(message, rawText) {
+function jsonErr(status, error, extra = null) {
   return new Response(
     JSON.stringify({
-      error: message,
-      rawText
+      error,
+      ...(extra ? { extra } : {})
     }),
     {
-      status: 500,
+      status,
       headers: { "Content-Type": "application/json" }
     }
   );
+}
+
+function safePreview(obj, maxLen = 1500) {
+  try {
+    const s = JSON.stringify(obj);
+    return s.length > maxLen ? s.slice(0, maxLen) + "…" : s;
+  } catch {
+    return null;
+  }
 }
 
 function normalize(obj) {
@@ -144,21 +213,24 @@ function normalize(obj) {
   }
 
   return {
-    hooks: obj.hooks,
+    hooks: obj.hooks.map(String),
     script: {
-      intro: obj.script.intro.trim(),
-      body: obj.script.body.trim(),
-      cta: obj.script.cta.trim()
+      intro: String(obj.script.intro).trim(),
+      body: String(obj.script.body).trim(),
+      cta: String(obj.script.cta).trim()
     },
-    caption: obj.caption.trim(),
+    caption: String(obj.caption).trim(),
     hashtags: obj.hashtags
       .slice(0, 12)
-      .map(h => (h.startsWith("#") ? h : `#${h}`))
+      .map(h => {
+        const s = String(h).trim();
+        return s.startsWith("#") ? s : `#${s}`;
+      })
   };
 }
 
 function detectPersona(topic = "") {
-  const t = topic.toLowerCase();
+  const t = String(topic || "").toLowerCase();
 
   if (
     t.includes("مطعم") ||
